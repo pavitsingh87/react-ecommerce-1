@@ -1,0 +1,37 @@
+# Optimized Dockerfile for EC2 Free Tier
+FROM node:18-alpine AS frontend-build
+
+# Build frontend with memory optimization
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci --only=production --no-audit
+COPY frontend/ ./
+RUN NODE_OPTIONS="--max-old-space-size=512" npm run build
+
+# Backend stage - minimal image
+FROM node:18-alpine AS backend
+
+WORKDIR /app
+COPY backend/package*.json ./
+RUN npm ci --only=production --no-audit
+
+# Copy backend source
+COPY backend/ ./
+
+# Copy built frontend
+COPY --from=frontend-build /app/frontend/build ./public
+
+# Create uploads directory
+RUN mkdir -p uploads
+
+# Use non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S bijoukart -u 1001
+RUN chown -R bijoukart:nodejs /app
+USER bijoukart
+
+# Expose port
+EXPOSE 5000
+
+# Start with memory optimization
+CMD ["node", "--max-old-space-size=256", "server.js"]
